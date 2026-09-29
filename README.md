@@ -1,7 +1,7 @@
 # Website Blocker
 
 A Windows desktop application built with C# and .NET that allows users to block selected websites directly from their computer.
-
+made september 27th, 2026
 ## Features
 
 - Add websites to a block list
