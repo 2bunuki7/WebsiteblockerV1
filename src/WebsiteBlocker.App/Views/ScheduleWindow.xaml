@@ -1,0 +1,39 @@
+<Window x:Class="WebsiteBlocker.App.Views.ScheduleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Schedule"
+        Width="600"
+        Height="450"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid Margin="25">
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="20"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Blocking Schedule"
+                   FontSize="28"
+                   FontWeight="Bold"/>
+
+        <ListBox Grid.Row="2">
+
+            <ListBoxItem>
+                <TextBlock Text="No schedules created yet."
+                           Margin="10"/>
+            </ListBoxItem>
+
+        </ListBox>
+
+        <Button Grid.Row="3"
+                Content="Add Schedule"
+                Width="130"
+                Height="35"
+                HorizontalAlignment="Right"/>
+
+    </Grid>
+
+</Window>

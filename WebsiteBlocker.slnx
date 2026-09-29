@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WebsiteBlocker.App/WebsiteBlocker.App.csproj" />
+    <Project Path="src/WebsiteBlocker.Core/WebsiteBlocker.Core.csproj" />
+    <Project Path="src/WebsiteBlocker.Service/WebsiteBlocker.Service.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WebsiteBlocker.Tests/WebsiteBlocker.Tests.csproj" />
+  </Folder>
+</Solution>

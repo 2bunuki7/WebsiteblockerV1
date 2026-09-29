@@ -1,0 +1,6 @@
+{
+  "Enabled": false,
+  "BlockedSites": [],
+  "BlockSubdomains": true,
+  "EnableLogging": true
+}

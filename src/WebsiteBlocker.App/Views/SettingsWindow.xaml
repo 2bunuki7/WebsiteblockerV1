@@ -1,0 +1,40 @@
+<Window x:Class="WebsiteBlocker.App.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings"
+        Width="500"
+        Height="400"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid Margin="25">
+
+        <StackPanel>
+
+            <TextBlock Text="Settings"
+                       FontSize="28"
+                       FontWeight="Bold"/>
+
+            <TextBlock Text="Website Blocker configuration"
+                       Margin="0,5,0,25"
+                       Opacity="0.7"/>
+
+            <CheckBox Content="Start blocker with Windows"
+                      Margin="0,10"/>
+
+            <CheckBox Content="Enable logging"
+                      Margin="0,10"/>
+
+            <CheckBox Content="Block subdomains"
+                      Margin="0,10"/>
+
+            <Button Content="Save"
+                    Width="100"
+                    Height="35"
+                    HorizontalAlignment="Right"
+                    Margin="0,30,0,0"/>
+
+        </StackPanel>
+
+    </Grid>
+
+</Window>
