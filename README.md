@@ -44,16 +44,19 @@ WebsiteBlocker/
 - JSON
 - xUnit
 - Git / GitHub
-
 ## More in depth explanation of how it works and how it's built
 
-Website Blocker is built as a modular Windows application using **C# and .NET 10**. Instead of being a browser extension, the application works at the **Windows system level** by modifying the Windows `hosts` file. This allows the blocker to affect websites outside of a single browser.
+I built Website Blocker as a Windows desktop application using **C# and .NET 10**. The main idea is pretty simple: you add websites that you don't want accessible, turn the blocker on, and the application handles the rest.
 
-The project is separated into multiple components so that the user interface, blocking logic, configuration management, and background service are not all mixed together.
+Instead of making this as a browser extension, I wanted to make it work at the **Windows level**. Because of that, the application uses the Windows `hosts` file to block domains.
 
-### 1. Overall architecture
+I also wanted the project to be more than just one C# file with everything inside it, so I split it into different projects and services. This makes the code easier to understand, test, and expand later.
 
-The application is divided into three main projects:
+---
+
+### 1. How the project is structured
+
+The project currently has three main applications/projects:
 
 ```text
 WebsiteBlocker
@@ -62,193 +65,170 @@ WebsiteBlocker
 │   └── WPF desktop application
 │
 ├── WebsiteBlocker.Core
-│   └── Main application logic
+│   └── Main blocking and configuration logic
 │
 └── WebsiteBlocker.Service
     └── Windows background service
 ```
 
-There is also a test project:
+There is also a separate test project:
 
 ```text
 tests/
 └── WebsiteBlocker.Tests
 ```
 
-The general flow of the application looks like this:
+The reason I separated these is so each part has its own job.
+
+The WPF application handles what the user sees and interacts with, the Core project handles the actual logic, and the Service project is responsible for running the blocker in the background.
+
+The basic relationship looks like this:
 
 ```text
                  ┌──────────────────────┐
-                 │      WPF App          │
-                 │ WebsiteBlocker.App   │
+                 │      WPF App         │
+                 │  WebsiteBlocker.App  │
                  └──────────┬───────────┘
                             │
-                            │ User actions
                             ▼
                  ┌──────────────────────┐
                  │    Core Library      │
-                 │ WebsiteBlocker.Core │
+                 │ WebsiteBlocker.Core  │
                  └───────┬───────┬──────┘
                          │       │
-             ┌───────────┘       └─────────────┐
-             ▼                                 ▼
-   ┌────────────────────┐           ┌────────────────────┐
-   │ Configuration      │           │ Blocker Service    │
-   │ Service            │           │                    │
-   └─────────┬──────────┘           └─────────┬──────────┘
-             │                                │
-             ▼                                ▼
-   ┌────────────────────┐           ┌────────────────────┐
-   │ settings.json      │           │ Windows hosts file │
-   └────────────────────┘           └────────────────────┘
+                         ▼       ▼
+              ┌────────────┐  ┌──────────────┐
+              │ Settings   │  │ Blocker      │
+              │ Service    │  │ Service      │
+              └─────┬──────┘  └──────┬───────┘
+                    │                │
+                    ▼                ▼
+             settings.json      Windows hosts
+                                   file
 ```
 
-The Windows Service uses the same Core library:
+The Windows Service uses the same Core project:
 
 ```text
-             ┌──────────────────────┐
-             │ WebsiteBlocker.Service│
-             └──────────┬───────────┘
-                        │
-                        ▼
-             ┌──────────────────────┐
-             │   WebsiteBlocker.Core│
-             └──────────┬───────────┘
-                        │
-                        ▼
-             ┌──────────────────────┐
-             │ Windows hosts file   │
-             └──────────────────────┘
+WebsiteBlocker.Service
+        │
+        ▼
+WebsiteBlocker.Core
+        │
+        ▼
+Windows hosts file
 ```
 
-This structure makes it possible to change the user interface without rewriting the actual blocking system.
+This means I don't have to duplicate the blocking logic in multiple places.
 
 ---
 
-### 2. WebsiteBlocker.App
+### 2. The WPF application
 
-`WebsiteBlocker.App` is the graphical user interface of the application.
+`WebsiteBlocker.App` is the part of the project that the user actually sees.
 
-It is built using:
+I'm using **WPF and XAML** for the interface.
 
-* C#
-* WPF
-* XAML
-* .NET 10
-* Windows desktop APIs
+The application lets the user:
 
-The main window allows the user to:
-
-* Add a website
-* Remove a website
-* View currently blocked websites
-* Enable the blocker
-* Disable the blocker
+* Add websites to the block list
+* Remove websites
+* Enable or disable the blocker
+* See which websites are currently blocked
 * See whether the blocker is currently enabled
 
-The UI itself does not contain all of the blocking logic.
+The important thing here is that the WPF application doesn't do everything itself.
 
-Instead, it communicates with the Core project.
-
-For example, when the user enters:
+For example, if I enter:
 
 ```text
 youtube.com
 ```
 
-and presses the add button, the application roughly performs this sequence:
+the button click doesn't directly start editing the hosts file.
+
+Instead, the process is more like:
 
 ```text
 User enters website
         │
         ▼
-MainWindow receives button click
+Add Website button
         │
         ▼
-Website is cleaned/normalized
+MainWindow.xaml.cs
         │
         ▼
-ConfigurationService loads settings
+DomainMatcher
         │
         ▼
-Domain is added to BlockedSites
+ConfigurationService
         │
         ▼
-ConfigurationService saves settings
+settings.json
         │
         ▼
-UI refreshes the website list
+BlockerService
         │
         ▼
-If blocker is enabled:
-        │
-        ▼
-BlockerService updates hosts file
+Windows hosts file
 ```
 
-This keeps the UI relatively simple while the actual logic remains inside the Core project.
+This makes the application much easier to work on because the UI doesn't need to know every detail about how website blocking works.
 
 ---
 
 ### 3. WPF and XAML
 
-The application uses **WPF (Windows Presentation Foundation)** for the desktop interface.
+The graphical interface is built using WPF.
 
-WPF separates the visual interface from the C# logic.
-
-The `.xaml` file defines the interface:
-
-```xml
-<Window>
-    ...
-</Window>
-```
-
-while the corresponding `.xaml.cs` file contains the behavior.
+WPF lets me separate the actual interface from the C# code behind it.
 
 For example:
 
 ```text
 MainWindow.xaml
         │
-        │ defines the UI
+        │ Defines what the window looks like
         ▼
 MainWindow.xaml.cs
         │
-        │ handles events
+        │ Defines what the window does
         ▼
 WebsiteBlocker.Core
+        │
+        │ Handles the actual logic
 ```
 
-The application uses event handlers for actions such as clicking the Add Website or Enable Blocker buttons.
+The XAML contains things like buttons, text boxes, lists, labels, colors, and layout.
 
-For example, an event such as:
+The C# code handles things like:
 
 ```csharp
 private void AddWebsite_Click(...)
 ```
 
-is triggered when the user presses the Add Website button.
-
-The handler then communicates with the Core services.
+So when the user clicks **Add Website**, the event handler runs and starts the process of adding that website.
 
 ---
 
-### 4. Administrator privileges
+### 4. Why the application needs Administrator privileges
 
-The Windows `hosts` file is a protected system file.
+One of the first problems I had to deal with was permissions.
 
-Its normal location is:
+The Windows hosts file is located at:
 
 ```text
 C:\Windows\System32\drivers\etc\hosts
 ```
 
-Normal applications generally cannot modify this file without elevated privileges.
+Windows protects this file because changing it can affect how the computer connects to websites.
 
-Because Website Blocker needs to modify the file, the application includes an `app.manifest`.
+Normally, a regular application can't just modify it.
 
-The manifest requests:
+Because Website Blocker needs to edit this file, I added an `app.manifest` to the WPF application.
+
+The manifest contains:
 
 ```xml
 <requestedExecutionLevel
@@ -256,27 +236,27 @@ The manifest requests:
     uiAccess="false" />
 ```
 
-This tells Windows that the application should request administrator privileges when it starts.
+This tells Windows that the application needs administrator privileges.
 
-As a result, Windows displays the User Account Control prompt when necessary.
-
-The application therefore does not depend on the user remembering to manually select:
+So instead of having to right-click the program and select:
 
 ```text
 Run as administrator
 ```
 
-every time.
+Windows automatically asks for permission when the application starts.
+
+This also means that the application can directly update the hosts file when the user enables or changes the block list.
 
 ---
 
-### 5. WebsiteBlocker.Core
+### 5. The Core project
 
-`WebsiteBlocker.Core` contains the main logic of the application.
+`WebsiteBlocker.Core` is basically the brain of the application.
 
-This project is intentionally separated from the WPF interface.
+This is where the important logic lives.
 
-It contains components such as:
+It contains things like:
 
 ```text
 Models/
@@ -290,22 +270,24 @@ Services/
     Logger.cs
 ```
 
-The Core project can therefore be reused by:
+The biggest reason I made a separate Core project is so that the actual blocking logic isn't tied to the WPF interface.
+
+That means the same Core code can be used by:
 
 * The WPF application
 * The Windows Service
-* Automated tests
-* Potential future interfaces
+* Tests
+* Future versions of the application
 
-This is an important part of the architecture because the blocking engine does not depend directly on the graphical interface.
+For example, if I eventually replace the WPF interface with another interface, I don't need to completely rewrite how blocking works.
 
 ---
 
 ### 6. BlockerSettings
 
-`BlockerSettings` represents the application's configuration.
+`BlockerSettings` is basically the object that stores the application's current configuration.
 
-It contains information such as:
+It contains values such as:
 
 ```csharp
 public bool Enabled { get; set; }
@@ -317,7 +299,9 @@ public bool BlockSubdomains { get; set; }
 public bool EnableLogging { get; set; }
 ```
 
-Conceptually, the settings look like:
+So instead of having random variables spread throughout the application, the settings are kept together.
+
+Conceptually:
 
 ```text
 BlockerSettings
@@ -334,19 +318,19 @@ BlockerSettings
 └── EnableLogging
 ```
 
-This means the rest of the application does not need to manually manage individual configuration values.
-
-Instead, it works with one settings object.
+This makes it much easier for the rest of the application to know what the current configuration is.
 
 ---
 
-### 7. ConfigurationService
+### 7. Saving settings with JSON
 
-The `ConfigurationService` is responsible for loading and saving application settings.
+I didn't want the blocked websites to disappear every time the application closes.
 
-The settings are stored as JSON in the user's local application data directory.
+That's why I created `ConfigurationService`.
 
-Conceptually, the configuration looks similar to:
+It handles saving and loading the configuration as JSON.
+
+A simplified version of the configuration looks like:
 
 ```json
 {
@@ -361,9 +345,11 @@ Conceptually, the configuration looks similar to:
 }
 ```
 
-The application does not hard-code the blocked websites directly into the program.
+So when the application starts, it loads the existing settings.
 
-Instead:
+If I add or remove a website, the configuration gets updated.
+
+The flow is basically:
 
 ```text
 Application
@@ -375,35 +361,33 @@ ConfigurationService
 settings.json
 ```
 
-When the application starts, it loads the existing settings.
-
-When the user changes the block list, the settings are saved again.
-
-This means the user's configuration remains available after restarting the application.
+This means I can close the application, open it again later, and still have the same websites in my block list.
 
 ---
 
 ### 8. DomainMatcher
 
-The `DomainMatcher` is responsible for normalizing website addresses.
+Another part of the Core project is `DomainMatcher`.
 
-Users might enter a website in several different ways:
+The reason this exists is because users don't always enter websites in exactly the same format.
+
+For example, these are all possible inputs:
 
 ```text
 youtube.com
+
 www.youtube.com
+
 https://youtube.com
+
 https://www.youtube.com/
+
 https://youtube.com/watch?v=123
 ```
 
-These all contain the same basic domain:
+I don't want the application to treat every one of those as a completely different website.
 
-```text
-youtube.com
-```
-
-The DomainMatcher removes unnecessary parts of the input so the application can work with a consistent domain format.
+The DomainMatcher cleans the input and extracts the domain.
 
 For example:
 
@@ -411,21 +395,23 @@ For example:
 https://www.youtube.com/watch?v=123
 ```
 
-can be normalized into:
+becomes:
 
 ```text
 youtube.com
 ```
 
-This prevents duplicate entries and makes domain matching more predictable.
+This also helps prevent duplicate entries in the block list.
 
 ---
 
-### 9. How website blocking actually works
+### 9. How the actual blocking works
 
-The actual blocking mechanism uses the Windows `hosts` file.
+This is probably the most important part of the project.
 
-The hosts file is a local mapping between domain names and IP addresses.
+Website Blocker currently uses the Windows **hosts file** to block websites.
+
+The hosts file allows Windows to map a domain to a specific IP address.
 
 For example:
 
@@ -433,37 +419,29 @@ For example:
 127.0.0.1 example.com
 ```
 
-tells Windows to resolve:
-
-```text
-example.com
-```
-
-to:
+This tells Windows that `example.com` should resolve to:
 
 ```text
 127.0.0.1
 ```
 
-instead of the real server address.
+instead of the real IP address of the website.
 
-`127.0.0.1` is the computer's local loopback address.
+`127.0.0.1` is the computer's own loopback address.
 
-In simplified terms:
+So, simplified, a normal website request looks something like:
 
 ```text
-Normal request:
-
 Browser
    │
    ▼
-DNS
+DNS lookup
    │
    ▼
 Real website server
 ```
 
-With a hosts entry:
+When the domain is in the hosts file:
 
 ```text
 Browser
@@ -478,15 +456,17 @@ hosts file
 127.0.0.1
 ```
 
-The browser therefore does not reach the real website through that hostname.
+The request is therefore redirected locally instead of resolving to the website's normal server.
 
 ---
 
-### 10. How Website Blocker modifies the hosts file
+### 10. How I modify the hosts file
 
-Website Blocker does not rewrite the entire hosts file.
+I didn't want the application to rewrite or replace the entire hosts file.
 
-Instead, it adds a clearly identifiable section.
+That could potentially mess with other entries already on the computer.
+
+Instead, Website Blocker creates its own section inside the file.
 
 For example:
 
@@ -499,7 +479,7 @@ For example:
 # WEBSITE_BLOCKER_END
 ```
 
-The markers are important:
+The two comments:
 
 ```text
 # WEBSITE_BLOCKER_START
@@ -511,56 +491,74 @@ and:
 # WEBSITE_BLOCKER_END
 ```
 
-They tell the application exactly which lines belong to Website Blocker.
+act as markers.
 
-This means the application can later remove its own entries without accidentally deleting unrelated entries from the hosts file.
+The application knows that everything between those two markers belongs to it.
 
----
-
-### 11. Enabling the blocker
-
-When the user presses:
-
-```text
-Enable Blocker
-```
-
-the application performs approximately these operations:
-
-```text
-1. Load current settings
-        │
-        ▼
-2. Check BlockedSites
-        │
-        ▼
-3. Remove the application's old hosts entries
-        │
-        ▼
-4. Add WEBSITE_BLOCKER_START
-        │
-        ▼
-5. Add 127.0.0.1 entries
-        │
-        ▼
-6. Add WEBSITE_BLOCKER_END
-        │
-        ▼
-7. Save the hosts file
-        │
-        ▼
-8. Flush Windows DNS cache
-```
-
-Before adding new entries, the application removes its previous block section.
-
-This prevents old domains from remaining in the hosts file after the user modifies the block list.
+This is important because when I disable the blocker, I don't want to delete unrelated entries from the hosts file.
 
 ---
 
-### 12. Disabling the blocker
+### 11. What happens when I enable the blocker
 
-When the user disables the blocker, the application searches for:
+When the user presses **Enable Blocker**, the application does several things.
+
+The process is roughly:
+
+```text
+Load settings
+      │
+      ▼
+Get blocked websites
+      │
+      ▼
+Remove old Website Blocker entries
+      │
+      ▼
+Add WEBSITE_BLOCKER_START
+      │
+      ▼
+Add blocked domains
+      │
+      ▼
+Add WEBSITE_BLOCKER_END
+      │
+      ▼
+Save hosts file
+      │
+      ▼
+Flush DNS cache
+```
+
+For example, if the block list contains:
+
+```text
+youtube.com
+reddit.com
+```
+
+the hosts file will get:
+
+```text
+# WEBSITE_BLOCKER_START
+127.0.0.1 youtube.com
+127.0.0.1 www.youtube.com
+127.0.0.1 reddit.com
+127.0.0.1 www.reddit.com
+# WEBSITE_BLOCKER_END
+```
+
+Before doing this, the application removes its previous block section.
+
+This is important when the user changes the list.
+
+For example, if I remove Reddit, I don't want the old Reddit entries to remain in the hosts file.
+
+---
+
+### 12. What happens when I disable it
+
+When the blocker is disabled, the application searches for:
 
 ```text
 # WEBSITE_BLOCKER_START
@@ -572,9 +570,7 @@ and:
 # WEBSITE_BLOCKER_END
 ```
 
-Everything between those markers belongs to the application.
-
-That section is removed.
+It then removes everything between them.
 
 For example:
 
@@ -591,7 +587,7 @@ Before:
 127.0.0.1 another-entry
 ```
 
-After disabling:
+After:
 
 ```text
 127.0.0.1 some-other-entry
@@ -599,28 +595,26 @@ After disabling:
 127.0.0.1 another-entry
 ```
 
-The application therefore only removes the entries that it created.
+Only the entries created by Website Blocker are removed.
 
 ---
 
-### 13. DNS cache flushing
+### 13. Flushing the DNS cache
 
-Windows can temporarily cache DNS information.
-
-Because the hosts file has changed, Website Blocker calls:
+After changing the hosts file, the application runs:
 
 ```text
 ipconfig /flushdns
 ```
 
-after modifying the hosts file.
+Windows can cache DNS information, so simply changing the hosts file doesn't always mean everything immediately starts using the new information.
 
-This asks Windows to clear its local DNS cache.
+Flushing the DNS cache tells Windows to clear its cached DNS records.
 
-The simplified sequence is:
+The basic process is:
 
 ```text
-Modify hosts file
+Change hosts file
        │
        ▼
 Flush DNS cache
@@ -629,15 +623,15 @@ Flush DNS cache
 Windows performs fresh name resolution
 ```
 
-Without clearing cached information, a previously resolved domain may continue behaving normally for a period of time.
+This helps the new blocking rules take effect immediately.
 
 ---
 
-### 14. Why the application blocks more than one browser
+### 14. Why this can work across different browsers
 
-A browser extension generally works inside one browser.
+One of the reasons I chose the hosts-file approach is that it isn't specifically tied to Chrome, Firefox, Edge, or another browser.
 
-For example:
+A browser extension would look more like:
 
 ```text
 Chrome Extension
@@ -646,7 +640,7 @@ Chrome Extension
 Chrome
 ```
 
-The Website Blocker architecture is different:
+while Website Blocker works closer to:
 
 ```text
 Website Blocker
@@ -660,27 +654,37 @@ Windows hosts file
       └── Other applications
 ```
 
-Because the hosts file is part of Windows name resolution, the blocking mechanism is not tied to one particular browser.
+Because the hosts file is handled by Windows, the application isn't dependent on one specific browser.
 
-However, hosts-file blocking is not equivalent to a complete network firewall or DNS filtering system. Modern applications and websites can use additional domains, alternative network mechanisms, DNS-over-HTTPS, IPv6, caching, or other techniques that can affect how effective a simple hosts-file block is.
+However, this doesn't mean the hosts file is a perfect network-level blocker.
 
-The current version intentionally uses the hosts file because it is simple, local, transparent, and useful for the first version of the project.
+Modern websites can use multiple domains, DNS-over-HTTPS, IPv6, caching, QUIC/HTTP3, and other networking techniques.
+
+For example, blocking:
+
+```text
+example.com
+```
+
+doesn't automatically mean every other domain used by that website is blocked.
+
+That's one of the biggest limitations of the current version.
 
 ---
 
-### 15. WebsiteBlocker.Service
+### 15. The Windows Service
 
-The project also contains a separate Windows Service:
+The project also contains:
 
 ```text
 WebsiteBlocker.Service
 ```
 
-The purpose of this component is to allow the blocker to operate in the background without requiring the graphical application to remain open.
+This is designed to allow the blocker to run in the background as a Windows Service.
 
-The service uses the .NET Worker Service infrastructure.
+The idea is that the graphical application is mainly for managing the block list, while the service can continue maintaining the blocking configuration in the background.
 
-Its basic architecture is:
+The architecture looks like:
 
 ```text
 Windows
@@ -692,13 +696,11 @@ Website Blocker Service
 Worker
    │
    ├── ConfigurationService
-   │
    ├── BlockerService
-   │
    └── Logger
 ```
 
-The worker periodically checks the configuration.
+The Worker periodically checks the configuration.
 
 Conceptually:
 
@@ -709,135 +711,131 @@ Start service
 Load settings
      │
      ▼
-Is Enabled true?
+Is blocker enabled?
+     │
     / \
-  Yes  No
-   │    │
-   ▼    ▼
-Block  Remove
-sites  blocks
-   │    │
-   └────┘
-      │
-      ▼
-Wait
-      │
-      ▼
+   /   \
+ Yes    No
+  │      │
+  ▼      ▼
+Block   Remove
+sites   blocks
+  │      │
+  └──┬───┘
+     │
+     ▼
+   Wait
+     │
+     ▼
 Check again
 ```
 
-The current worker checks the configuration periodically rather than continuously monitoring every network request.
+The service doesn't need to constantly inspect every network connection.
 
-This is intentionally lightweight.
+Instead, it makes sure the hosts file matches the current configuration.
 
 ---
 
-### 16. Why there is a separate Windows Service
+### 16. Why I separated the Service from the GUI
 
-The graphical application and the background service have different responsibilities.
+The GUI and the service have different jobs.
 
-The GUI is responsible for:
-
-```text
-User interaction
-        │
-        ├── Add website
-        ├── Remove website
-        ├── Enable
-        └── Disable
-```
-
-The service is responsible for:
+The GUI is for the user:
 
 ```text
-Background operation
-        │
-        ├── Load configuration
-        ├── Maintain blocking
-        └── Write logs
+User
+ │
+ ├── Add website
+ ├── Remove website
+ ├── Enable blocker
+ └── Disable blocker
 ```
 
-This separation makes the application easier to expand later.
+The service is for background operation:
 
-For example, the GUI could eventually be closed while the service continues enforcing the configuration.
+```text
+Windows Service
+ │
+ ├── Load configuration
+ ├── Maintain blocking
+ └── Write logs
+```
+
+Keeping these separate means I can eventually close the GUI while the background service continues running.
+
+It also gives me a better foundation for adding features later.
 
 ---
 
 ### 17. Logging
 
-The application contains a `Logger` service.
+I also added a `Logger` service.
 
-Logs are stored inside the user's local application data directory.
+The purpose is pretty simple: if something goes wrong, I want to be able to find out what happened.
 
-The logger records events such as:
-
-```text
-Website Blocker service started.
-```
-
-or errors encountered while applying the configuration.
-
-A log entry has a timestamp:
+The logger records events with timestamps, for example:
 
 ```text
 [2026-09-28 18:30:12] Website Blocker service started.
 ```
 
-This makes it easier to diagnose problems without displaying every technical detail to the user.
+It can also record errors that happen while the service is running.
+
+This is especially useful for the Windows Service because there isn't always a GUI open where an error message can be displayed.
+
+Instead of silently failing, the service can write the problem to a log file.
 
 ---
 
 ### 18. Error handling
 
-The application uses exception handling around operations that can fail.
+There are several things that can go wrong with an application like this.
 
-For example, modifying the hosts file can fail if:
+For example:
 
-* Administrator privileges are missing
-* The file cannot be accessed
-* Another process is using the file
-* The configuration is invalid
-* A filesystem operation fails
+* The hosts file might not be accessible
+* Administrator permissions might not be available
+* A configuration file might be invalid
+* A filesystem operation might fail
+* Something could go wrong while the service is running
 
-Instead of allowing the entire application to crash, errors are caught and handled.
+Because of that, important operations are wrapped in exception handling.
 
-For GUI operations, the user can receive a message explaining what happened.
-
-For background operations, the service writes the error to the log.
-
-The general approach is:
+The basic idea is:
 
 ```text
-Operation
-   │
-   ▼
-Try
-   │
-   ├── Success → Continue
-   │
-   └── Error → Handle exception
-                    │
-                    ├── GUI → Show message
-                    │
-                    └── Service → Log error
+Try operation
+      │
+      ├── Success
+      │     │
+      │     ▼
+      │   Continue
+      │
+      └── Error
+            │
+            ├── GUI → Show error message
+            │
+            └── Service → Write to log
 ```
+
+This prevents a single error from immediately crashing the whole application.
 
 ---
 
-### 19. Tests
+### 19. Automated tests
 
-The project also contains a separate test project:
+The project also has a separate testing project:
 
 ```text
 tests/
 └── WebsiteBlocker.Tests/
 ```
 
-The tests use **xUnit**.
+I'm using **xUnit** for the tests.
 
-Testing is particularly useful for logic such as domain normalization.
+One of the areas where testing is particularly useful is domain normalization.
 
-For example, the application should be able to consistently process inputs such as:
+For example, I want these:
 
 ```text
 example.com
@@ -846,17 +844,19 @@ https://example.com
 https://www.example.com/
 ```
 
-Automated tests help make sure changes to the application do not accidentally break existing functionality.
+to be handled consistently.
 
-The test project references the Core project rather than testing the WPF interface directly.
+Automated tests let me check that behavior whenever I change the code.
 
-This is another reason why separating the application into Core and UI projects is useful.
+The tests mainly target the Core project rather than the WPF interface.
+
+That's another advantage of having the Core logic separated from the UI.
 
 ---
 
-### 20. Complete application flow
+### 20. The full process from the user's perspective
 
-Putting everything together, a typical user interaction looks like this:
+If I put the whole thing together, a typical interaction looks like this:
 
 ```text
 ┌──────────────────────────────┐
@@ -865,8 +865,8 @@ Putting everything together, a typical user interaction looks like this:
                │
                ▼
 ┌──────────────────────────────┐
-│ Windows requests admin       │
-│ privileges                   │
+│ Windows asks for admin       │
+│ permission                   │
 └──────────────┬───────────────┘
                │
                ▼
@@ -876,8 +876,7 @@ Putting everything together, a typical user interaction looks like this:
                │
                ▼
 ┌──────────────────────────────┐
-│ ConfigurationService loads   │
-│ settings.json                │
+│ Load settings.json           │
 └──────────────┬───────────────┘
                │
                ▼
@@ -887,14 +886,12 @@ Putting everything together, a typical user interaction looks like this:
                │
                ▼
 ┌──────────────────────────────┐
-│ DomainMatcher normalizes     │
-│ the domain                   │
+│ DomainMatcher cleans domain  │
 └──────────────┬───────────────┘
                │
                ▼
 ┌──────────────────────────────┐
-│ ConfigurationService saves   │
-│ the updated configuration    │
+│ Save updated settings        │
 └──────────────┬───────────────┘
                │
                ▼
@@ -905,7 +902,7 @@ Putting everything together, a typical user interaction looks like this:
                ▼
 ┌──────────────────────────────┐
 │ BlockerService updates       │
-│ Windows hosts file           │
+│ the hosts file               │
 └──────────────┬───────────────┘
                │
                ▼
@@ -915,71 +912,74 @@ Putting everything together, a typical user interaction looks like this:
                │
                ▼
 ┌──────────────────────────────┐
-│ Windows resolves the blocked │
-│ domain to 127.0.0.1          │
+│ Windows resolves the domain  │
+│ to 127.0.0.1                 │
 └──────────────┬───────────────┘
                │
                ▼
 ┌──────────────────────────────┐
-│ Connection does not reach    │
-│ the real website server      │
+│ The browser can't reach the │
+│ normal server through that   │
+│ hostname                     │
 └──────────────────────────────┘
 ```
 
+So even though the user only sees a button that says **Enable Blocker**, quite a few things happen behind that button.
+
 ---
 
-### 21. Why the project is split into multiple projects
+### 21. Why I didn't put everything into one project
 
-The project could have been written as one large C# application, but separating the components makes the code easier to maintain.
+It would have been possible to make the whole application inside one project and put everything into a few classes.
 
-The responsibilities are approximately:
+I chose not to do that because the project would become harder to maintain as more features are added.
 
-| Project / Component      | Responsibility                    |
-| ------------------------ | --------------------------------- |
-| `WebsiteBlocker.App`     | WPF graphical interface           |
-| `WebsiteBlocker.Core`    | Main application logic            |
-| `BlockerService`         | Hosts-file blocking               |
-| `ConfigurationService`   | Loading and saving settings       |
-| `DomainMatcher`          | Domain normalization and matching |
-| `Logger`                 | Logging application events        |
-| `WebsiteBlocker.Service` | Background Windows Service        |
-| `WebsiteBlocker.Tests`   | Automated tests                   |
+Instead, each part has a specific responsibility:
 
-This follows the general principle of **separation of concerns**.
+| Component                | What it does                       |
+| ------------------------ | ---------------------------------- |
+| `WebsiteBlocker.App`     | WPF user interface                 |
+| `WebsiteBlocker.Core`    | Main application logic             |
+| `BlockerService`         | Modifies the hosts file            |
+| `ConfigurationService`   | Saves and loads settings           |
+| `DomainMatcher`          | Cleans and normalizes domains      |
+| `Logger`                 | Records events and errors          |
+| `WebsiteBlocker.Service` | Runs the blocker in the background |
+| `WebsiteBlocker.Tests`   | Tests the application logic        |
 
-Each component has a relatively specific responsibility instead of one class doing everything.
+This is basically **separation of concerns**.
+
+Instead of one giant class trying to do everything, each part has a specific job.
 
 ---
 
 ### 22. Current limitations
 
-The current implementation is intentionally a V1 implementation.
+The current version is still a **V1**.
 
-Because it relies on the Windows hosts file, it does not provide the same level of control as a full DNS filtering system, firewall, VPN, or network-level filtering solution.
+The hosts-file approach works well as a starting point, but it isn't the same thing as building a complete firewall or DNS filtering system.
 
-For example, blocking a website may require blocking multiple domains if the website loads resources or services from different hostnames.
+Some of the limitations are:
 
-Other limitations can include:
+* A website can use multiple domains
+* DNS-over-HTTPS can affect hostname resolution
+* IPv6 can behave differently
+* Browsers can cache information
+* QUIC/HTTP3 can change how traffic is handled
+* Some applications don't behave like normal web browsers
+* Blocking one domain doesn't automatically block every service related to that website
 
-* DNS caching
-* IPv6 resolution
-* DNS-over-HTTPS
-* QUIC/HTTP3
-* Websites using multiple domains
-* Applications that do not rely on normal hostname resolution
-* Browser-specific caching
+Because of these limitations, the current hosts-file system is more of a foundation for the project.
 
-These are reasons why future versions can move beyond the hosts-file approach.
-
-The hosts-file system is therefore best considered the foundation of the first version rather than the final networking architecture.
+If I continue developing it, I can eventually move toward a more advanced DNS or network filtering system.
 
 ---
 
-### 23. Planned improvements
+### 23. What I want to add later
 
-The architecture leaves room for several future improvements.
+The current architecture also gives me a good starting point for future features.
 
-Possible future features include:
+Some things I want to experiment with are:
 
 ```text
 Website Blocker
@@ -995,52 +995,53 @@ Website Blocker
 └── Future
     ├── Scheduled blocking
     ├── PIN/password protection
-    ├── System tray application
+    ├── System tray support
     ├── Blocking statistics
     ├── Custom blocked page
     ├── Improved DNS filtering
     ├── Category-based blocking
-    ├── Better IPv6 handling
+    ├── Better IPv6 support
     └── More advanced network filtering
 ```
 
-The goal is to keep the existing Core architecture reusable so these features can be added without rebuilding the entire application.
+Because the blocking logic is separated from the UI, these features can be added without having to completely rebuild the project.
 
 ---
 
-### 24. Summary
+### 24. In simple terms
 
-Website Blocker is essentially a layered Windows application:
+If I had to explain the whole project without all the technical details, it works like this:
 
 ```text
-                    USER
-                     │
-                     ▼
-              WPF / XAML UI
-                     │
-                     ▼
-            WebsiteBlocker.Core
-                     │
-          ┌──────────┼──────────┐
-          ▼          ▼          ▼
-    Configuration  Domain     Blocking
-      Service      Matcher     Service
-          │                     │
-          ▼                     ▼
-    settings.json         Windows hosts
-                                │
-                                ▼
-                         DNS cache flush
-                                │
-                                ▼
-                         Windows network
+I add a website
+       │
+       ▼
+The app cleans up the domain
+       │
+       ▼
+The domain is saved to my settings
+       │
+       ▼
+I enable the blocker
+       │
+       ▼
+The app adds the domain to
+the Windows hosts file
+       │
+       ▼
+Windows points that domain
+to 127.0.0.1
+       │
+       ▼
+The normal website isn't reached
 ```
 
-The most important design decision is that the **UI is separated from the blocking engine**.
+The main idea behind the project is simple, but I built it in a way that gives me room to keep expanding it.
 
-The WPF application handles interaction with the user, while the Core project handles the actual logic. The Windows Service can then reuse the same Core logic to maintain blocking in the background.
+The **WPF application** handles the interface, the **Core project** handles the logic, the **hosts file** handles the current blocking method, and the **Windows Service** provides the foundation for background operation.
 
-This makes the project easier to test, maintain, and expand while also giving the application a clear architecture instead of putting all functionality inside one large file.
+That separation is probably the most important part of the project because it means I can keep adding features without turning the whole application into one huge file.
+
 
 
 
